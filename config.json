@@ -1,0 +1,12 @@
+{
+    "阿里": {
+        "api_key": "",
+        "model": "qwen-vl-max-latest",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    "火山引擎": {
+        "api_key": "",
+        "model": "doubao-1-5-vision-pro-32k-250115",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3"
+    }
+}
