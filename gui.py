@@ -485,8 +485,13 @@ class ImageAnalyzerGUI:
                             json_str = json_match.group()
                             # 解析返回的JSON数据
                             data = json.loads(json_str)
+                            
+                            # 获取格式建议
+                            self.status_text.insert(tk.END, "正在获取格式建议...\n")
+                            format_suggestions = analyzer.get_format_suggestions(data)
+                            
                             excel_handler = ExcelHandler(self.save_path.get())
-                            if excel_handler.write_data(json_str):
+                            if excel_handler.write_data(data, format_suggestions):
                                 self.status_text.insert(tk.END, f"合并处理完成！表格已保存至: {self.save_path.get()}\n")
                                 success = True
                             else:
