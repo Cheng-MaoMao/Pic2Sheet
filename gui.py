@@ -10,10 +10,19 @@ class ImageAnalyzerGUI:
     def __init__(self, root):
         self.root = root
         self.config_path = "config.json"
-        self.load_config()  # 加载配置
+        
+        # 先创建变量但不设置初始值
+        self.provider = tk.StringVar()
+        self.api_key = tk.StringVar()
+        self.model_name = tk.StringVar()
+        
+        # 加载配置
+        self.load_config()
+        
+        # 设置窗口属性
         self.root.title("图片转表格工具")
         self.root.geometry("600x400")
-        self.root.minsize(600, 550)  # 设置最小窗口大小
+        self.root.minsize(600, 550)
         
         # 配置根窗口的网格权重
         self.root.grid_rowconfigure(0, weight=1)
@@ -34,7 +43,6 @@ class ImageAnalyzerGUI:
 
         # 提供商选择
         ttk.Label(api_frame, text="提供商:").grid(row=0, column=0, sticky=tk.W)
-        self.provider = tk.StringVar(value="阿里")
         provider_combobox = ttk.Combobox(api_frame, textvariable=self.provider, 
                                         values=["阿里", "火山引擎"], 
                                         state="readonly", width=10)
@@ -43,14 +51,12 @@ class ImageAnalyzerGUI:
 
         # API Key输入
         ttk.Label(api_frame, text="API Key:").grid(row=1, column=0, sticky=tk.W)
-        self.api_key = tk.StringVar(value="")
         api_key_entry = ttk.Entry(api_frame, textvariable=self.api_key, width=50)
         api_key_entry.grid(row=1, column=1, padx=5)
         api_key_entry.bind('<FocusOut>', self.on_config_change)  # 添加失去焦点事件
 
         # 模型选择
         ttk.Label(api_frame, text="模型名称:").grid(row=2, column=0, sticky=tk.W)
-        self.model_name = tk.StringVar(value="qwen-vl-max-latest")
         self.model_entry = ttk.Entry(api_frame, textvariable=self.model_name, width=50)
         self.model_entry.grid(row=2, column=1, padx=5)
         self.model_entry.bind('<FocusOut>', self.on_config_change)  # 添加失去焦点事件
@@ -183,18 +189,56 @@ class ImageAnalyzerGUI:
     
     def load_config(self):
         """加载配置文件"""
+        # 默认配置结构
+        default_config = {
+            "阿里": {
+                "api_key": "",
+                "model": "qwen-vl-max-latest",
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            },
+            "火山引擎": {
+                "api_key": "",
+                "model": "doubao-1-5-vision-pro-32k-250115",
+                "base_url": "https://ark.cn-beijing.volces.com/api/v3"
+            }
+        }
+        
         try:
             if os.path.exists(self.config_path):
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     self.config = json.load(f)
-                    # 读取当前提供商的设置
-                    provider = self.provider.get()
-                    if provider in self.config:
-                        self.api_key.set(self.config[provider]["api_key"])
-                        self.model_name.set(self.config[provider]["model"])
             else:
-                # 默认配置
-                self.config = {
+                self.config = default_config
+                # 创建新的配置文件
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.config, f, ensure_ascii=False, indent=4)
+            
+            # 设置默认提供商
+            self.provider.set("阿里")
+            
+            # 读取当前提供商的设置
+            provider = self.provider.get()
+            if provider in self.config:
+                self.api_key.set(self.config[provider]["api_key"])
+                self.model_name.set(self.config[provider]["model"])
+                
+        except Exception as e:
+            print(f"加载配置文件失败: {str(e)}")
+            self.config = default_config
+            self.provider.set("阿里")
+            self.api_key.set("")
+            self.model_name.set("qwen-vl-max-latest")
+    
+    def save_config(self):
+        """保存配置文件"""
+        try:
+            # 读取现有配置（如果存在）
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    existing_config = json.load(f)
+            else:
+                # 使用默认配置
+                existing_config = {
                     "阿里": {
                         "api_key": "",
                         "model": "qwen-vl-max-latest",
@@ -206,24 +250,19 @@ class ImageAnalyzerGUI:
                         "base_url": "https://ark.cn-beijing.volces.com/api/v3"
                     }
                 }
-                self.save_config()
-        except Exception as e:
-            print(f"加载配置文件失败: {str(e)}")
-            self.config = {}
-    
-    def save_config(self):
-        """保存配置文件"""
-        try:
-            # 更新配置
+
+            # 只更新当前提供商的 api_key 和 model
             provider = self.provider.get()
-            if provider not in self.config:
-                self.config[provider] = {}
-            self.config[provider]["api_key"] = self.api_key.get()
-            self.config[provider]["model"] = self.model_name.get()
-            
+            if provider in existing_config:
+                existing_config[provider]["api_key"] = self.api_key.get()
+                existing_config[provider]["model"] = self.model_name.get()
+                
             # 保存到文件
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=4)
+                json.dump(existing_config, f, ensure_ascii=False, indent=4)
+                
+            # 更新内存中的配置
+            self.config = existing_config
                 
             print(f"配置已保存: {provider} - API Key: {self.api_key.get()}, Model: {self.model_name.get()}")
         except Exception as e:
