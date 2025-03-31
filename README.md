@@ -30,5 +30,5 @@
 
 ## 许可协议 📄
 
-本工具采用MIT许可证，仅用于学习和交流，使用过程中请确保遵循相关 API 服务商的使用规定。
+本工具采用[MIT](https://github.com/Cheng-MaoMao/PictureTransferForm?tab=MIT-1-ov-file#readme)许可证，仅用于学习和交流，使用过程中请确保遵循相关 API 服务商的使用规定。
 若出现任何个人利益损害或数据泄露与作者本人无关。
