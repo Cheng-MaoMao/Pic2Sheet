@@ -89,22 +89,33 @@ class ImageAnalyzer:
             print(f"分析图片时发生错误: {str(e)}")
             return None
 
-    def analyze_images_batch(self, image_paths):
-        """批量分析多张关联图片"""
-        prompt = """请分析以下编号的图片内容。这些是工艺流程相关的图片，需要提取其中的信息并整理成表格：
+    def analyze_images_batch(self, image_paths, batch_size=5, max_retries=3):
+        """批量分析多张关联图片，使用分批处理机制"""
+        all_results = []
+        total_images = len(image_paths)
+        
+        # 分批处理图片
+        for i in range(0, total_images, batch_size):
+            batch_paths = image_paths[i:min(i+batch_size, total_images)]
+            
+            # 添加重试机制
+            for retry in range(max_retries):
+                try:
+                    print(f"处理第{i+1}到第{min(i+batch_size, total_images)}批图片 (尝试 {retry + 1}/{max_retries})")
+                    
+                    prompt = f"""请分析以下第{i+1}到第{min(i+batch_size, total_images)}张图片内容：
 
 图片编号：
 """
-        
-        # 添加图片编号说明
-        for i, path in enumerate(image_paths, 1):
-            prompt += f"[{i}] {os.path.basename(path)}\n"
-        
-        prompt += """
+                    # 添加当前批次的图片编号
+                    for idx, path in enumerate(batch_paths, i+1):
+                        prompt += f"[{idx}] {os.path.basename(path)}\n"
+                    
+                    prompt += """
 请按照以下要求处理：
-1. 将所有图片中的信息整合到一个统一的数据表格中
-2. 使用合适的表头来表示不同类型的数据
-3. 每一行代表一个工艺记录
+1. 提取每张图片中的信息并保持完整性
+2. 使用统一的表头格式
+3. 每一行代表一条完整记录
 4. 保持数据的完整性，包括空值
 5. 仅返回JSON格式的数据数组
 
@@ -115,53 +126,74 @@ class ImageAnalyzer:
     ["数据1", "数据2", "数据3", ...]
 ]"""
 
-        all_image_data = []
-        
-        try:
-            # 处理所有图片
-            for image_path in image_paths:
-                if image_path.startswith(('http://', 'https://')):
-                    image_url = image_path
-                else:
-                    import base64
-                    with open(image_path, "rb") as image_file:
-                        image_data = base64.b64encode(image_file.read()).decode('utf-8')
-                        image_url = f"data:image/jpeg;base64,{image_data}"
-                all_image_data.append({"type": "image_url", "image_url": {"url": image_url}})
+                    all_image_data = []
+                    # 处理当前批次的图片
+                    for image_path in batch_paths:
+                        if image_path.startswith(('http://', 'https://')):
+                            image_url = image_path
+                        else:
+                            import base64
+                            with open(image_path, "rb") as image_file:
+                                image_data = base64.b64encode(image_file.read()).decode('utf-8')
+                                image_url = f"data:image/jpeg;base64,{image_data}"
+                        all_image_data.append({"type": "image_url", "image_url": {"url": image_url}})
 
-            # 创建包含所有图片的请求
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                temperature=0.7,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        *all_image_data
-                    ]
-                }]
-            )
-            
-            response_data = json.loads(completion.model_dump_json())
-            content = response_data['choices'][0]['message']['content']
-            
-            # 打印原始返回内容，用于调试
-            print("原始返回内容:", content)
-            print("提供商:", self.provider)
-            print("使用的模型:", self.model)
-            
-            # 清理和格式化内容
-            content = content.strip()
-            if content.startswith('```') and content.endswith('```'):
-                content = content[3:-3].strip()
-            if content.startswith('json'):
-                content = content[4:].strip()
-                
-            return content
-            
-        except Exception as e:
-            print(f"批量分析图片时发生错误: {str(e)}")
-            return None
+                    completion = self.client.chat.completions.create(
+                        model=self.model,
+                        temperature=0.7,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                *all_image_data
+                            ]
+                        }],
+                        max_tokens=4096,
+                        timeout=120  # 增加超时时间到120秒
+                    )
+                    
+                    response_data = json.loads(completion.model_dump_json())
+                    content = response_data['choices'][0]['message']['content']
+                    
+                    # 清理和格式化内容
+                    content = content.strip()
+                    if content.startswith('```') and content.endswith('```'):
+                        content = content[3:-3].strip()
+                    if content.startswith('json'):
+                        content = content[4:].strip()
+                    
+                    # 验证JSON格式
+                    batch_result = json.loads(content)
+                    if not isinstance(batch_result, list):
+                        raise ValueError("返回的数据格式不是数组")
+                    
+                    if batch_result and isinstance(batch_result, list):
+                        if not all_results:
+                            # 第一批，保留表头
+                            all_results.extend(batch_result)
+                        else:
+                            # 后续批次，只添加数据行
+                            all_results.extend(batch_result[1:])
+                    
+                    print(f"已处理 {min(i+batch_size, total_images)}/{total_images} 张图片")
+                    # 处理成功，跳出重试循环
+                    break
+                    
+                except Exception as e:
+                    print(f"处理第{i+1}到第{min(i+batch_size, total_images)}批图片时发生错误: {str(e)}")
+                    if retry < max_retries - 1:
+                        print("准备重试...")
+                        import time
+                        time.sleep(2)  # 等待2秒后重试
+                        continue
+                    else:
+                        print("已达到最大重试次数，跳过该批次")
+                        return None  # 返回None表示处理失败
+        
+        # 确保有处理结果才返回
+        if all_results:
+            return json.dumps(all_results, ensure_ascii=False, indent=2)
+        return None
 
     def get_format_suggestions(self, data):
         """询问大模型关于数据格式化的建议"""
@@ -173,30 +205,32 @@ class ImageAnalyzer:
 数据内容：
 {data_str}
 
-请提供以下方面的建议：
-1. 每列的合适宽度（以字符数计）
-2. 文本对齐方式（左对齐/居中/右对齐）
-3. 是否需要自动换行
-4. 特殊格式（如日期、数字等）
-5. 颜色标注建议（如需要）
-
-请以JSON格式返回建议，格式如下：
+请严格按照以下JSON格式返回建议：
 {{
     "columns": [
         {{
             "header": "列名",
-            "width": 数字,
-            "alignment": "left/center/right",
-            "wrap_text": true/false,
-            "format": "文本说明",
-            "color": "颜色代码(可选)"
+            "width": 15,
+            "alignment": "left",
+            "wrap_text": false,
+            "format": "常规",
+            "color": "#E6E6E6"
         }}
     ]
-}}"""
+}}
+
+注意：
+1. 必须返回合法的JSON格式
+2. 所有属性值必须符合规范
+3. 颜色值使用16进制格式
+4. width必须是数字
+5. alignment只能是 "left"、"center" 或 "right"
+6. wrap_text必须是true或false
+"""
 
             completion = self.client.chat.completions.create(
                 model=self.model,
-                temperature=0.7,
+                temperature=0.3,  # 降低温度以获得更稳定的输出
                 messages=[{
                     "role": "user",
                     "content": prompt
@@ -206,16 +240,55 @@ class ImageAnalyzer:
             response_data = json.loads(completion.model_dump_json())
             content = response_data['choices'][0]['message']['content']
             
+            # 打印原始返回内容以便调试
+            print("格式建议原始返回:", content)
+            
+            # 清理JSON字符串
+            content = content.strip()
             # 提取JSON部分
             import re
             json_match = re.search(r'\{[\s\S]*\}', content)
             if json_match:
-                return json.loads(json_match.group())
+                json_str = json_match.group()
+                # 尝试解析和验证JSON
+                try:
+                    format_data = json.loads(json_str)
+                    # 验证数据结构
+                    if not isinstance(format_data, dict) or 'columns' not in format_data:
+                        raise ValueError("格式建议数据结构无效")
+                    return format_data
+                except json.JSONDecodeError as e:
+                    print(f"JSON解析错误: {str(e)}")
+                    print("问题JSON:", json_str)
+                    # 返回默认格式
+                    return self._get_default_format_suggestions(data)
+            else:
+                print("未找到有效的JSON格式")
+                return self._get_default_format_suggestions(data)
             
-            return None
         except Exception as e:
             print(f"获取格式建议时发生错误: {str(e)}")
+            return self._get_default_format_suggestions(data)
+
+    def _get_default_format_suggestions(self, data):
+        """生成默认的格式建议"""
+        if not data or not isinstance(data, list) or not data[0]:
             return None
+            
+        columns = []
+        for header in data[0]:  # 使用第一行作为表头
+            columns.append({
+                "header": str(header),
+                "width": min(len(str(header)) + 4, 40),  # 默认宽度
+                "alignment": "center" if header in ["序号", "日期", "时间"] else "left",
+                "wrap_text": len(str(header)) > 20,
+                "format": "常规",
+                "color": "FFE6E6E6"  # 默认表头背景色
+            })
+        
+        return {
+            "columns": columns
+        }
 
 class ExcelHandler:
     def __init__(self, excel_path):

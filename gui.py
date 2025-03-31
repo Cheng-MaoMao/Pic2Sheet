@@ -455,7 +455,6 @@ class ImageAnalyzerGUI:
     def process_images(self):
         """批量处理图片"""
         try:
-            # 检查 API Key
             api_key = self.api_key.get()
             if not api_key:
                 raise ValueError("请先设置 API Key")
@@ -463,81 +462,38 @@ class ImageAnalyzerGUI:
             image_list = self.get_image_list()
             mode = self.process_mode.get()
             
-            # 创建分析器
             analyzer = ImageAnalyzer(
                 provider=self.provider.get(),
                 api_key=api_key
             )
             
-            success = True
-            
             if mode == "merge":
-                # 合并处理模式 - 一次性处理所有图片
-                self.status_text.insert(tk.END, "开始分析所有图片...\n")
-                result = analyzer.analyze_images_batch(image_list)
+                self.status_text.insert(tk.END, "开始分批分析图片...\n")
+                # 使用新的分批处理方法
+                result = analyzer.analyze_images_batch(image_list, batch_size=5)
                 
                 if result:
                     try:
-                        # 提取 JSON 部分
-                        import re
-                        json_match = re.search(r'\[\s*\[.*?\]\s*\]', result, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group()
-                            # 解析返回的JSON数据
-                            data = json.loads(json_str)
-                            
-                            # 获取格式建议
-                            self.status_text.insert(tk.END, "正在获取格式建议...\n")
-                            format_suggestions = analyzer.get_format_suggestions(data)
-                            
-                            excel_handler = ExcelHandler(self.save_path.get())
-                            if excel_handler.write_data(data, format_suggestions):
-                                self.status_text.insert(tk.END, f"合并处理完成！表格已保存至: {self.save_path.get()}\n")
-                                success = True
-                            else:
-                                success = False
-                                self.status_text.insert(tk.END, "保存合并数据失败\n")
-                        else:
-                            self.status_text.insert(tk.END, "未找到有效的JSON数据\n")
-                            success = False
-                    except (json.JSONDecodeError, Exception) as e:
-                        self.status_text.insert(tk.END, f"处理返回数据失败: {str(e)}\n")
-                        success = False
-                else:
-                    self.status_text.insert(tk.END, "分析图片失败\n")
-                    success = False
-                    
-            else:
-                # 批量处理模式 - 逐个处理图片
-                for image_path in image_list:
-                    save_path = os.path.join(
-                        self.save_path.get(),
-                        os.path.splitext(os.path.basename(image_path))[0] + ".xlsx"
-                    )
-                    
-                    result = analyzer.analyze_image(image_path)
-                    if result:
-                        excel_handler = ExcelHandler(save_path)
-                        if excel_handler.write_data(result):
-                            self.status_text.insert(tk.END, f"处理完成: {save_path}\n")
-                        else:
-                            self.status_text.insert(tk.END, f"处理失败: {image_path}\n")
-                            success = False
-                    else:
-                        self.status_text.insert(tk.END, f"处理失败: {image_path}\n")
-                        success = False
+                        # 解析JSON数据
+                        data = json.loads(result)
                         
-                if success:
-                    self.status_text.insert(tk.END, "批量处理完成！\n")
+                        # 获取格式建议
+                        self.status_text.insert(tk.END, "正在获取格式建议...\n")
+                        format_suggestions = analyzer.get_format_suggestions(data)
+                        
+                        excel_handler = ExcelHandler(self.save_path.get())
+                        if excel_handler.write_data(data, format_suggestions):
+                            self.status_text.insert(tk.END, 
+                                f"合并处理完成！共处理{len(data)-1}条记录，表格已保存至: {self.save_path.get()}\n")
+                            self.result_queue.put(("success", None))
+                        else:
+                            raise Exception("保存合并数据失败")
+                    except Exception as e:
+                        self.status_text.insert(tk.END, f"处理返回数据失败: {str(e)}\n")
+                        self.result_queue.put(("error", str(e)))
                 else:
-                    self.status_text.insert(tk.END, "批量处理完成，但部分文件处理失败\n")
-            
-            # 根据整体处理结果发送成功或失败状态
-            if success:
-                self.result_queue.put(("success", None))
-            else:
-                self.result_queue.put(("error", "部分文件处理失败"))
-                
+                    self.status_text.insert(tk.END, "图片分析失败，请检查图片内容或重试\n")
+                    raise Exception("分析图片失败")
         except Exception as e:
             self.result_queue.put(("error", str(e)))
 
