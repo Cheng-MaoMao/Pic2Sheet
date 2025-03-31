@@ -14,7 +14,7 @@
 ## 使用方法 🚀
 
 1. 请确保你已安装所需的依赖库，如 `openpyxl`、`openai` 等。
-2. 在配置文件 [`config.json`](./config.json) 中填写你的 API Key 和对应的模型参数。
+2. 在配置文件 [`config.json`](./config.json) 或者GUI界面中填写你的 API Key 和对应的模型参数。
 3. 运行 `gui.py` 文件，启动图形化界面。
 4. 根据需要选择单文件、批量或合并处理模式，再选择或添加图片。
 5. 设置好 Excel 的保存路径后，点击“开始分析”按钮，等待处理完成。
@@ -30,5 +30,5 @@
 
 ## 许可协议 📄
 
-本工具采用MIT许可证，仅用于学习和交流，使用过程中请确保遵循相关 API 服务商的使用规定。
+本工具采用[MIT](https://github.com/Cheng-MaoMao/PictureTransferForm?tab=MIT-1-ov-file#readme)许可证，仅用于学习和交流，使用过程中请确保遵循相关 API 服务商的使用规定。
 若出现任何个人利益损害或数据泄露与作者本人无关。
