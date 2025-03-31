@@ -1,4 +1,4 @@
-# PictureTransferForm 📸➡️📊
+# Pic2Sheet 📸➡️📊
 
 通过大模型分析图片，自动转换为 Excel 表格，帮你轻松提取图片中的数据信息！
 
